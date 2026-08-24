@@ -1,12 +1,14 @@
 const { TokenType } = require("./lexer.js")
-const { Parser } = require("./parser")
+const { Parser } = require("./parser.js")
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 
 class NodeVisitor {
-    visit(node) {
+    async visit(node) {
         if (!node) return null
         let methodName = "visit_" + node.constructor.name
         let visitor = this[methodName] ?? this.genericVisit
-        return visitor.call(this, node)
+        return await visitor.call(this, node)
     }
 
     genericVisit(node) {
@@ -35,9 +37,11 @@ class Enviroment {
         if (this.declaredVars.has(name)) {
             return this.values.get(name)
         }
+        
         if (this.parent !== null) {
             return this.parent.get(name)
         }
+
         throw new Error(`Variable '${name}' is not declared or defined`)
     }
 
@@ -63,7 +67,7 @@ class CustomFunction {
         this.closure = closure
     }
 
-    call(interpreter, args) {
+    async call(interpreter, args) {
         let env = new Enviroment(this.closure)
 
         for (let i = 0; i < this.declaration.params.length; i++) {
@@ -74,7 +78,7 @@ class CustomFunction {
         let previousEnv = interpreter.currentEnv
         try {
             interpreter.currentEnv = env
-            interpreter.visit(this.declaration.body)
+            await interpreter.visit(this.declaration.body)
         } catch (e) {
             if (e instanceof ReturnException) {
                 return e.value
@@ -94,11 +98,11 @@ class NativeFunction {
         this.arity = arity 
     }
 
-    call(interpreter, args) {
+    async call(interpreter, args) {
         if (this.arity !== null && args.length !== this.arity) {
             throw new Error(`Expected ${this.arity} arguments, but got ${args.length}`)
         }
-        return this.fn(interpreter, args)
+        return await this.fn(interpreter, args)
     }
 }
 
@@ -121,6 +125,11 @@ class Interpreter extends NodeVisitor {
     }
 
     registerBuiltIns() {
+        this.globals.define("sleep", new NativeFunction(async (interp, args) => {
+            let time = args[0]
+            await sleep(time * 1000)
+        }))
+
         this.globals.define("random", new NativeFunction((interp, args) => {
             let [min = 0, max = 1] = args
             return Math.floor(Math.random() * (max - min + 1)) + min
@@ -159,58 +168,66 @@ class Interpreter extends NodeVisitor {
         }))
     }
 
-    visit_Compound(node) {
+    async visit_Compound(node) {
         let previousEnv = this.currentEnv
         try {
             this.currentEnv = new Enviroment(previousEnv)
             for (let child of node.children) {
-                this.visit(child)
+                await this.visit(child)
             }
         } finally {
             this.currentEnv = previousEnv
         }
     }
 
-    visit_VarDecl(node) {
-        let value = node.exprNode ? this.visit(node.exprNode) : null
+    async visit_VarDecl(node) {
+        let value = node.exprNode ? await this.visit(node.exprNode) : null
         this.currentEnv.define(node.varNode.value, value, false)
     }
 
-    visit_ConstDecl(node) {
-        let value = this.visit(node.exprNode)
+    async visit_ConstDecl(node) {
+        let value = await this.visit(node.exprNode)
         this.currentEnv.define(node.varNode.value, value, true)
     }
 
-    visit_Assign(node) {
-        let value = this.visit(node.right)
+    async visit_Assign(node) {
+        let value = await this.visit(node.right)
         this.currentEnv.assign(node.left.value, value)
     }
 
-    visit_Var(node) {
+    async visit_Var(node) {
         return this.currentEnv.get(node.value)
     }
 
-    visit_Num(node) {
+    async visit_Num(node) {
         return node.value
     }
 
-    visit_Str(node) {
+    async visit_Str(node) {
         return node.value
     }
 
-    visit_Bool(node) {
+    async visit_Bool(node) {
         return node.value
     }
 
-    visit_UnaryOp(node) {
-        let val = this.visit(node.expr)
+    async visit_Null(node) {
+        return node.value
+    }
+
+    async visit_UnDef(node) {
+        return node.value
+    }
+
+    async visit_UnaryOp(node) {
+        let val = await this.visit(node.expr)
         if (node.op.type === TokenType.PLUS) return +val
         if (node.op.type === TokenType.MINUS) return -val
     }
 
-    visit_BinOp(node) {
-        let left = this.visit(node.left)
-        let right = this.visit(node.right)
+    async visit_BinOp(node) {
+        let left = await this.visit(node.left)
+        let right = await this.visit(node.right)
 
         switch (node.op.type) {
             case TokenType.PLUS:
@@ -242,43 +259,51 @@ class Interpreter extends NodeVisitor {
         }
     }
 
-    visit_If(node) {
-        let condition = this.visit(node.condition)
+    async visit_If(node) {
+        let condition = await this.visit(node.condition)
         if (condition) {
-            this.visit(node.thenBranch)
+            await this.visit(node.thenBranch)
         } else if (node.elseBranch) {
-            this.visit(node.elseBranch)
+            await this.visit(node.elseBranch)
         }
     }
 
-    visit_While(node) {
-        while(this.visit(node.condition)) {
-            this.visit(node.body)
+    async visit_While(node) {
+        while (await this.visit(node.condition)) {
+            await this.visit(node.body)
         }
     }
 
-    visit_FunctionDecl(node) {
+    async visit_FunctionDecl(node) {
         let fn = new CustomFunction(node, this.currentEnv)
         this.currentEnv.define(node.fnName.value, fn, false)
     }
 
-    visit_Call(node) {
-        let callee = this.visit(node.callee)
-        let args = node.args.map(arg => this.visit(arg))
+    async visit_Return(node) {
+        let value = node.expr ? await this.visit(node.expr) : null
+        throw new ReturnException(value)
+    }
+
+    async visit_Call(node) {
+        let callee = await this.visit(node.callee)
+        let args = []
+        for (let arg of node.args) {
+            args.push(await this.visit(arg))
+        }
 
         if (!callee || typeof callee.call !== "function") {
             let name = node.callee.value || "expression"
             throw new Error(`TypeError: '${name}' is not a function!`)
         }
 
-        return callee.call(this, args, node)
+        return await callee.call(this, args, node)
     }
 
-    visit_For(node) {
+    async visit_For(node) {
         let varName = node.variable.token.value
-        let start = this.visit(node.start)
-        let limit = this.visit(node.limit)
-        let step = node.step ? this.visit(node.step) : 1
+        let start = await this.visit(node.start)
+        let limit = await this.visit(node.limit)
+        let step = node.step ? await this.visit(node.step) : 1
         
         if (this.currentEnv.declaredVars.has(varName)) {
             this.currentEnv.assign(varName, start)
@@ -289,27 +314,23 @@ class Interpreter extends NodeVisitor {
         if (step > 0) {
             for (let val = start; val <= limit; val += step) {
                 this.currentEnv.assign(varName, val)
-                this.visit(node.body)
+                await this.visit(node.body)
             }
         } else if (step < 0) {
             for (let val = start; val >= limit; val += step) {
                 this.currentEnv.assign(varName, val)
-                this.visit(node.body)
+                await this.visit(node.body)
             }
         }
     }
 
-    // visit_Print(node) {
-       
-    // }
-
-    visit_NoOp(node) {
+    async visit_NoOp(node) {
         return null
     }
 
-    interpret() {
+    async interpret() {
         let tree = this.parser.parse()
-        return this.visit(tree)
+        return await this.visit(tree)
     }
 }
 

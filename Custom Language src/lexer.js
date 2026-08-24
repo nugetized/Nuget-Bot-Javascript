@@ -29,6 +29,8 @@ const TokenType = {
     INT: "INT",
     STR: "STR",
     BOOL: "BOOL",
+    NULL: "NULL",
+    UNDEF: "UNDEF",
 
     POW: "POW", SQRT: "SQRT",
     MUL: "MUL", DIV: "DIV",
@@ -46,7 +48,7 @@ const TokenType = {
     CONST: "CONST",
     // PRINT: "PRINT",
     IF: "IF", FOR: "FOR", WHILE: "WHILE", 
-    ELSE: "ELSE", OR: "OR", AND: "AND", FN: "FN",
+    ELSE: "ELSE", OR: "OR", AND: "AND", FN: "FN", RETURN: "RETURN",
 
     LBRACE: "{", RBRACE: "}",
 
@@ -64,11 +66,16 @@ const Keywords = {
     "or": new Token(TokenType.OR, "or"),
     "and": new Token(TokenType.AND, "and"),
     "else": new Token(TokenType.ELSE, "else"),
+    "return": new Token(TokenType.RETURN, "return"),
 
     // "print": new Token(TokenType.PRINT, "print"),
 
     "true": new Token(TokenType.BOOL, "true"),
-    "false": new Token(TokenType.BOOL, "false")
+    "false": new Token(TokenType.BOOL, "false"),
+
+    "null": new Token(TokenType.NULL, "null"),
+    "undefined": new Token(TokenType.UNDEF, "undefined")
+
 }
 
 class Lexer {

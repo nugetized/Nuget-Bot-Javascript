@@ -1,7 +1,7 @@
 const {Client, Events, GatewayIntentBits, SlashCommandBuilder, InteractionContextType, ContextMenuCommandBuilder, codeBlock } = require(`discord.js`)
 const { Lexer } = require('../Custom Language src/lexer.js')
-const { Parser } = require('../Custom Language src/parser')
-const { Interpreter } = require('../Custom Language src/interpreter')
+const { Parser } = require('../Custom Language src/parser.js')
+const { Interpreter } = require('../Custom Language src/interpreter.js')
 
 function randomInt(min, max) {
 	return Math.floor(Math.random() * (max - min + 1)) + min
@@ -79,27 +79,52 @@ module.exports = {
         let start = new Date().getTime()
 
         let interpreter = null
+        let updateInterval = null
+
+        const makeMessage = (outputEntries, executionTime, isDone = false) => {
+            let recentEntries = outputEntries.slice(-20)
+
+            let joined = recentEntries.join('\n')
+            let outputText = outputEntries.length > 0
+                ? (outputEntries.length > 20 ? '...\n' + joined : joined) 
+                : '- No output'
+            
+            let currentStatus = isDone
+                ? `-# Finished in ${new Intl.NumberFormat().format(executionTime)} ms`
+                : `-# Running...`
+            
+            return `***Input:***\n\`\`\`ts\n${formattedInput}\`\`\`\n***Output:*** \`\`\`ts\n${outputText}\`\`\`\n${currentStatus}`
+        }
 
         try {
             let lexer = new Lexer(input)
             let parser = new Parser(lexer)
             interpreter = new Interpreter(parser)
+
+            let lastUpdateCount = 0
+
+            updateInterval = setInterval(async () => {
+                let currentLogs = Array.from(interpreter.OUTPUT || [])
+                if (currentLogs.length > lastUpdateCount) {
+                    lastUpdateCount = currentLogs.length
+                    await interaction.editReply(makeMessage(currentLogs)).catch(() => {})
+                }
+            }, 500)
             
-            interpreter.interpret()
+            await interpreter.interpret()
+
+            clearInterval(updateInterval)
 
             let outputEntries = Array.from(interpreter.OUTPUT || [])
-            let joined = outputEntries.join('\n');
-            let outputText = outputEntries.length > 0 
-                ? (joined.length > 1000 ? joined.slice(0, 1000) + '...' : joined) 
-                : '- No output';
             let time = new Date().getTime() - start
 
             if (randomInt(1, 25) !== 1) {
-                await interaction.editReply('***Input:***\n```ts\n' + formattedInput + '```\n***Output:*** ```ts\n' + outputText + '```\n-# Finished in ' + time + ' ms')
+                await interaction.editReply(makeMessage(outputEntries, time, true))
             } else {
                 await interaction.editReply('no')
             }
         } catch(e) {
+            if (updateInterval) clearInterval(updateInterval)
             console.error(e)
 
             let outputEntries = interpreter && interpreter.OUTPUT ? Array.from(interpreter.OUTPUT) : []

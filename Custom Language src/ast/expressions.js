@@ -41,6 +41,22 @@ class Bool extends AST {
     }
 }
 
+class Null extends AST {
+    constructor(token, value) {
+        super()
+        this.token = token
+        this.value = value
+    }
+}
+
+class UnDef extends AST {
+    constructor(token, value) {
+        super()
+        this.token = token
+        this.value = value
+    }
+}
+
 class Var extends AST {
     constructor(token) {
         super()
@@ -65,5 +81,7 @@ module.exports = {
     Str,
     Bool,
     Var,
-    Call
+    Call,
+    Null,
+    UnDef,
 };

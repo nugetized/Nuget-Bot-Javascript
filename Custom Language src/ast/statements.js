@@ -76,6 +76,13 @@ class FunctionDecl extends AST {
     }
 }
 
+class Return extends AST {
+    constructor(expr = null) {
+        super()
+        this.expr = expr
+    }
+}
+
 class NoOp extends AST {}
 
 module.exports = {
@@ -89,4 +96,5 @@ module.exports = {
     NoOp,
     For,
     FunctionDecl,
+    Return
 };

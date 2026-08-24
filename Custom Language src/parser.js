@@ -7,7 +7,9 @@ const {
     Str,
     Bool,
     Var,
-    Call
+    Call,
+    Null,
+    UnDef,
 } = require("./ast/expressions")
 
 const {
@@ -20,7 +22,8 @@ const {
     While,
     NoOp,
     For,
-    FunctionDecl
+    FunctionDecl,
+    Return,
 } = require("./ast/statements")
 
 class Parser {
@@ -79,16 +82,14 @@ class Parser {
                 node = this.const_statement()
                 this.eat(TokenType.SEMI)
                 return node
-            // case TokenType.PRINT:
-            //     node = this.print_statement()
-            //     this.eat(TokenType.SEMI)
-            //     return node
             case TokenType.IF:
                 return this.if_statement()
             case TokenType.WHILE:
                 return this.while_statement()
             case TokenType.FOR:
                 return this.for_statement()
+            case TokenType.RETURN:
+                return this.return_statement()
             case TokenType.ID:
                 let varNode = this.variable()
                 if (this.currentToken.type === TokenType.ASSIGN) {
@@ -131,6 +132,20 @@ class Parser {
 
         let body = this.block_statement()
         return new FunctionDecl(fnName, params, body)
+    }
+
+    return_statement() {
+        this.eat(TokenType.RETURN)
+        
+        let expr = null
+
+        if (this.currentToken.type !== TokenType.SEMI && this.currentToken.type !== TokenType.RBRACE) {
+            expr = this.or_expr()
+        }
+
+        this.eat(TokenType.SEMI)
+
+        return new Return(expr)
     }
 
     declaration_statement() {
@@ -303,6 +318,12 @@ class Parser {
                 let isTrue = token.value === "true"
                 this.eat(TokenType.BOOL)
                 return new Bool(new Token(TokenType.BOOL, isTrue))
+            case TokenType.NULL:
+                this.eat(TokenType.NULL)
+                return new Null(new Token(TokenType.NULL, null))
+            case TokenType.UNDEF:
+                this.eat(TokenType.UNDEF)
+                return new UnDef(new Token(TokenType.UNDEF, undefined))
             default:
                 throw new Error("Invalid Syntax, given token type not found")
         }
